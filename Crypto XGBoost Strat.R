@@ -1,3 +1,16 @@
+# Define commonly used universes
+all_tickers = c('BTC-USD', 'ETH-USD', 'BCH-USD', 'ETC-USD', 'LTC-USD', 
+                'DOGE-USD','DASH-USD','DCR-USD','PIVX-USD','XEM-USD',
+                'XMR-USD','ZEC-USD','XRP-USD','USDT-USD','BNB-USD',
+                'EOS-USD','ADA-USD','XLM-USD','LINK-USD','TRX-USD',
+                'MIOTA-USD','VET-USD','BAT-USD','DGB-USD','ZRX-USD',
+                'OMG-USD','ICX-USD','QTUM-USD','LSK-USD','REP-USD',
+                'KNC-USD', 'WAVES-USD','SNT-USD')
+
+RH_tickers = c()
+
+
+
 # load libraries
 library(quantmod)
 library(DataCombine)
@@ -266,20 +279,31 @@ backtest <- function(data,tickers_RH, train_period, investment_horizon, Eta, pca
     # use out-of-sample predictions to generate portfolio weights
     # Weight Scheme #1--------------------------------------------  
     # weights = (xgb_pred_out_of_sample-mean(xgb_pred_out_of_sample))
-    # weights[xgb_pred_out_of_sample < 0] = 0
+    # #weights[xgb_pred_out_of_sample < 0] = 0
     # weights[is.na(weights)] = 0
     # S = sum(abs(weights))
     # if (S == 0){S = 1}
     # weights = weights*2/(S*investment_horizon)
+    #-------------------------------------------------------------
     
     # Weight Scheme #2--------------------------------------------  
-    k = 0.8
-    # if c is between 0 and 1, it is dilutive, if it is greater than 1, it magnifies
-    weights = order(xgb_pred_out_of_sample,decreasing = F)^k
-    weights[xgb_pred_out_of_sample < 0] = 0
-    weights[is.na(weights)] = 0
-    weights = weights/sum(weights)
+    # k = 3
+    # # if c is between 0 and 1, it is dilutive, if it is greater than 1, it magnifies
+    # weights = order(xgb_pred_out_of_sample,decreasing = F)^k
+    # weights[xgb_pred_out_of_sample < 0] = 0
+    # weights[is.na(weights)] = 0
+    # if (sum(weights) != 0){
+    #   weights = weights/(sum(weights)*investment_horizon)  
+    # }
+    #-------------------------------------------------------------
     
+
+    # Weight Scheme #3--------------------------------------------
+    # long top 2, short bottom 3
+    # motivation: easy to implement
+    ord = order(xgb_pred_out_of_sample,decreasing = F)
+    weights = (ord>3)*-1.5 + (ord<4)*1
+    #-------------------------------------------------------------
     
     
     # long - only constraint
@@ -290,9 +314,16 @@ backtest <- function(data,tickers_RH, train_period, investment_horizon, Eta, pca
     for (j in 1:length(weights)){
       ticker_weights[c:(c+investment_horizon-1),test_tickers[j]] = rep(weights[j],investment_horizon) + ticker_weights[c:(c+investment_horizon-1),test_tickers[j]]
     }
+    
+    # comment the 4 lines below if you do not want live plotting:
+    daily_returns = as.numeric(rowSums(ticker_returns*ticker_weights))
+    cum_returns = cumsum(daily_returns)[(train_period+1):(c+4)] + 1
+    plot_days = days[(train_period+1):(c+4)]
+    plot(cum_returns,type='l')
   }
+  
   daily_returns = as.numeric(rowSums(ticker_returns*ticker_weights))
-  cum_returns = cumprod(1+daily_returns)
+  cum_returns = cumsum(daily_returns) + 1
   plot(as.Date(row.names(ticker_returns)),cum_returns, type = 'l')
   highpoint = cum_returns[maxdrawdown(cum_returns)$from]
   lowpoint = cum_returns[maxdrawdown(cum_returns)$to]
@@ -305,7 +336,7 @@ backtest <- function(data,tickers_RH, train_period, investment_horizon, Eta, pca
 }
 
 # params for the backtest
-tickers_RH = c('ETH', 'ETC', 'LTC', 'DOGE', 'BCH', 'BTC') # only use tickers that are supported on Robinhood *** ADD BITCOIN SV (BSV-USD) when data issue is fixed
+tickers_RH = c('ETH', 'ETC', 'LTC', 'BCH', 'BTC') # only use tickers that are supported on Robinhood *** ADD BITCOIN SV (BSV-USD) when data issue is fixed
 train_period = 25
 investment_horizon = 5 # shoule match what you use in Feature_Generation
 Eta = 0.4
@@ -313,4 +344,4 @@ pca_num = 10
 long_only = T
 d = data.f[data.f$date > '2018-06-01',]
 
-backtest(d,tickers_RH, train_period, investment_horizon, Eta, pca_num, long_only)
+output = backtest(d,tickers_RH, train_period, investment_horizon, Eta, pca_num, long_only = F)
